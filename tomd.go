@@ -26,9 +26,12 @@ type Action struct {
 }
 
 type Topic struct {
-	Name    string
-	Items   []*Item
-	Actions []*Action
+	StartTime time.Time
+	EndTime   time.Time
+	Name      string
+	Items     []*Item
+	Actions   []*Action
+	Decisions []*Item
 }
 
 type Unknown struct {
@@ -48,6 +51,7 @@ type Meeting struct {
 
 func dump(meeting *Meeting) {
 	allactions := []*Action{}
+	alldecisions := []*Item{}
 	fmt.Printf("# %s started on %s\n", meeting.Name, meeting.StartTime)
 
 	fmt.Println("\n## Attendance")
@@ -56,7 +60,7 @@ func dump(meeting *Meeting) {
 	}
 
 	for _, t := range meeting.Topics {
-		fmt.Printf("\n## Topic: %s\n", t.Name)
+		fmt.Printf("\n## Topic: %s (%s)\n", t.Name, t.EndTime.Sub(t.StartTime))
 		for _, i := range t.Items {
 			fmt.Printf("- %s\n", i.Text)
 		}
@@ -67,12 +71,26 @@ func dump(meeting *Meeting) {
 				fmt.Printf("- %s(%s): %s\n", a.Who, a.Due, a.Text)
 			}
 		}
+		if len(t.Decisions) > 0 {
+			fmt.Println("\n### Decisions")
+			for _, d := range t.Decisions {
+				alldecisions = append(alldecisions, d)
+				fmt.Printf("- %s\n", d.Text)
+			}
+		}
 	}
 
 	if len(allactions) > 0 {
 		fmt.Println("\n# All Actions")
 		for _, a := range allactions {
 			fmt.Printf("- %s(%s): %s\n", a.Who, a.Due, a.Text)
+		}
+	}
+
+	if len(alldecisions) > 0 {
+		fmt.Println("\n# All Decisions")
+		for _, d := range alldecisions {
+			fmt.Printf("- %s\n", d.Text)
 		}
 	}
 
@@ -158,17 +176,27 @@ func main() {
 				}
 			}
 		case "@endmeeting":
-			endtime := timeOffset(meeting.StartTime, when)
+			ts := timeOffset(meeting.StartTime, when)
+			if currentTopic != nil {
+				currentTopic.EndTime = ts
+			}
+			endtime := ts
 			meeting.EndTime = &endtime
 		case "@topic":
+			ts := timeOffset(meeting.StartTime, when)
+			if currentTopic != nil {
+				currentTopic.EndTime = ts
+			}
 			currentTopic = &Topic{
-				Name: cmd[1],
+				StartTime: ts,
+				Name:      cmd[1],
 			}
 			meeting.Topics = append(meeting.Topics, currentTopic)
 		case "@item":
 			if currentTopic == nil {
 				currentTopic = &Topic{
-					Name: "not specified",
+					StartTime: timeOffset(meeting.StartTime, when),
+					Name:      "not specified",
 				}
 				meeting.Topics = append(meeting.Topics, currentTopic)
 			}
@@ -176,10 +204,23 @@ func main() {
 				&Item{
 					Text: cmd[1],
 				})
+		case "@decision":
+			if currentTopic == nil {
+				currentTopic = &Topic{
+					StartTime: timeOffset(meeting.StartTime, when),
+					Name:      "not specified",
+				}
+				meeting.Topics = append(meeting.Topics, currentTopic)
+			}
+			currentTopic.Decisions = append(currentTopic.Decisions,
+				&Item{
+					Text: cmd[1],
+				})
 		case "@action":
 			if currentTopic == nil {
 				currentTopic = &Topic{
-					Name: "not specified",
+					StartTime: timeOffset(meeting.StartTime, when),
+					Name:      "not specified",
 				}
 				meeting.Topics = append(meeting.Topics, currentTopic)
 			}

@@ -9,4 +9,5 @@
 00:01:47	David Bainbridge:	@here late
 00:01:56	David Bainbridge:	@item sounds good
 00:01:57	David Bainbridge:	@action dbainbri 7/11 get back to us with information
+00:01:58	Joe Someone:	@decision we are going to make it work
 00:02:00	David Bainbridge:	@endmeeting

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -55,6 +56,12 @@ func dump(meeting *Meeting) {
 	fmt.Printf("# %s started on %s\n", meeting.Name, meeting.StartTime)
 
 	fmt.Println("\n## Attendance")
+
+	sort.Slice(meeting.Attendees, func(i, j int) bool {
+		return strings.Compare(meeting.Attendees[i].Name,
+			meeting.Attendees[j].Name) < 0
+	})
+
 	for _, a := range meeting.Attendees {
 		fmt.Printf("- %s\n", a.Name)
 	}

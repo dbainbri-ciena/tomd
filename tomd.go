@@ -42,12 +42,13 @@ type Unknown struct {
 }
 
 type Meeting struct {
-	Name      string
-	StartTime *time.Time
-	EndTime   *time.Time
-	Attendees []*Attendee
-	Topics    []*Topic
-	Unknowns  []*Unknown
+	Name       string
+	StartTime  *time.Time
+	ChatOffset time.Duration
+	EndTime    *time.Time
+	Attendees  []*Attendee
+	Topics     []*Topic
+	Unknowns   []*Unknown
 }
 
 func dump(meeting *Meeting) {
@@ -111,14 +112,14 @@ func dump(meeting *Meeting) {
 	fmt.Printf("\n# Meeting ended at %s\n", meeting.EndTime)
 }
 
-func timeOffset(base *time.Time, offset string) time.Time {
+func timeOffset(base *time.Time, baseOffset time.Duration, offset string) time.Time {
 	parts := strings.Split(offset, ":")
 	dur, err := time.ParseDuration(fmt.Sprintf("%sh%sm%ss", parts[0], parts[1], parts[2]))
 
 	if err != nil || base == nil {
 		return time.Now().Add(dur)
 	}
-	return base.Add(dur)
+	return base.Add(dur).Add(-baseOffset)
 }
 
 func main() {
@@ -149,7 +150,7 @@ func main() {
 
 		switch cmd[0] {
 		default:
-			ts := timeOffset(meeting.StartTime, when)
+			ts := timeOffset(meeting.StartTime, meeting.ChatOffset, when)
 			meeting.Unknowns = append(meeting.Unknowns,
 				&Unknown{
 					When: ts,
@@ -168,7 +169,7 @@ func main() {
 						Name: cmd[1],
 					})
 			}
-		case "@meeting":
+		case "@startmeeting":
 			mparts := strings.SplitN(cmd[1], " ", 2)
 			if len(mparts) != 2 {
 				meeting.Name = cmd[1]
@@ -182,15 +183,22 @@ func main() {
 					meeting.Name = mparts[1]
 				}
 			}
+
+			// Capture the offset time of the meeting start
+			oparts := strings.Split(when, ":")
+			odur, err := time.ParseDuration(fmt.Sprintf("%sh%sm%ss", oparts[0], oparts[1], oparts[2]))
+			if err == nil {
+				meeting.ChatOffset = odur
+			}
 		case "@endmeeting":
-			ts := timeOffset(meeting.StartTime, when)
+			ts := timeOffset(meeting.StartTime, meeting.ChatOffset, when)
 			if currentTopic != nil {
 				currentTopic.EndTime = ts
 			}
 			endtime := ts
 			meeting.EndTime = &endtime
 		case "@topic":
-			ts := timeOffset(meeting.StartTime, when)
+			ts := timeOffset(meeting.StartTime, meeting.ChatOffset, when)
 			if currentTopic != nil {
 				currentTopic.EndTime = ts
 			}
@@ -202,7 +210,7 @@ func main() {
 		case "@item":
 			if currentTopic == nil {
 				currentTopic = &Topic{
-					StartTime: timeOffset(meeting.StartTime, when),
+					StartTime: timeOffset(meeting.StartTime, meeting.ChatOffset, when),
 					Name:      "not specified",
 				}
 				meeting.Topics = append(meeting.Topics, currentTopic)
@@ -214,7 +222,7 @@ func main() {
 		case "@decision":
 			if currentTopic == nil {
 				currentTopic = &Topic{
-					StartTime: timeOffset(meeting.StartTime, when),
+					StartTime: timeOffset(meeting.StartTime, meeting.ChatOffset, when),
 					Name:      "not specified",
 				}
 				meeting.Topics = append(meeting.Topics, currentTopic)
@@ -226,7 +234,7 @@ func main() {
 		case "@action":
 			if currentTopic == nil {
 				currentTopic = &Topic{
-					StartTime: timeOffset(meeting.StartTime, when),
+					StartTime: timeOffset(meeting.StartTime, meeting.ChatOffset, when),
 					Name:      "not specified",
 				}
 				meeting.Topics = append(meeting.Topics, currentTopic)

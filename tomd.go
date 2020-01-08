@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -27,15 +28,22 @@ type Action struct {
 }
 
 type Topic struct {
-	StartTime time.Time
-	EndTime   time.Time
-	Name      string
-	Items     []*Item
-	Actions   []*Action
-	Decisions []*Item
+	StartTime   time.Time
+	EndTime     time.Time
+	Name        string
+	Items       []*Item
+	Actions     []*Action
+	Decisions   []*Item
+	NonCommands []*NonCommand
 }
 
 type Unknown struct {
+	When time.Time
+	Who  string
+	Text string
+}
+
+type NonCommand struct {
 	When time.Time
 	Who  string
 	Text string
@@ -51,9 +59,12 @@ type Meeting struct {
 	Unknowns   []*Unknown
 }
 
+var dumpNonCommands = flag.Bool("non", false, "include the dump of non commands")
+
 func dump(meeting *Meeting) {
 	allactions := []*Action{}
 	alldecisions := []*Item{}
+	allnoncommands := []*NonCommand{}
 	fmt.Printf("# %s started on %s\n", meeting.Name, meeting.StartTime)
 
 	fmt.Println("\n## Attendance")
@@ -86,6 +97,13 @@ func dump(meeting *Meeting) {
 				fmt.Printf("- %s\n", d.Text)
 			}
 		}
+		if *dumpNonCommands && len(t.NonCommands) > 0 {
+			fmt.Println("\n### Non Commands")
+			for _, u := range t.NonCommands {
+				allnoncommands = append(allnoncommands, u)
+				fmt.Printf("- %s(%s): %s\n", u.Who, u.When, u.Text)
+			}
+		}
 	}
 
 	if len(allactions) > 0 {
@@ -109,6 +127,13 @@ func dump(meeting *Meeting) {
 		}
 	}
 
+	if *dumpNonCommands && len(allactions) > 0 {
+		fmt.Println("\n# All Non Commands")
+		for _, a := range allnoncommands {
+			fmt.Printf("- %s(%s): %s\n", a.Who, a.When, a.Text)
+		}
+	}
+
 	fmt.Printf("\n# Meeting ended at %s\n", meeting.EndTime)
 }
 
@@ -123,6 +148,7 @@ func timeOffset(base *time.Time, baseOffset time.Duration, offset string) time.T
 }
 
 func main() {
+	flag.Parse()
 	meeting := Meeting{
 		Name:      "not specified",
 		StartTime: nil,
@@ -132,8 +158,8 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		parts := regexp.MustCompile("\t+").Split(scanner.Text(), 3)
-		if len(parts) != 3 || !strings.HasPrefix(parts[2], "@") {
+		parts := regexp.MustCompile("\t+").Split(strings.TrimSpace(scanner.Text()), 3)
+		if len(parts) != 3 {
 			continue
 		}
 		when := parts[0]
@@ -148,15 +174,31 @@ func main() {
 			continue
 		}
 
-		switch cmd[0] {
+		switch strings.TrimSpace(cmd[0]) {
 		default:
 			ts := timeOffset(meeting.StartTime, meeting.ChatOffset, when)
-			meeting.Unknowns = append(meeting.Unknowns,
-				&Unknown{
-					When: ts,
-					Who:  who,
-					Text: text,
-				})
+			if strings.HasPrefix(parts[2], "@") {
+				meeting.Unknowns = append(meeting.Unknowns,
+					&Unknown{
+						When: ts,
+						Who:  who,
+						Text: text,
+					})
+			} else {
+				if currentTopic == nil {
+					currentTopic = &Topic{
+						StartTime: timeOffset(meeting.StartTime, meeting.ChatOffset, when),
+						Name:      "not specified",
+					}
+					meeting.Topics = append(meeting.Topics, currentTopic)
+				}
+				currentTopic.NonCommands = append(currentTopic.NonCommands,
+					&NonCommand{
+						When: ts,
+						Who:  who,
+						Text: text,
+					})
+			}
 		case "@here":
 			if len(cmd) == 1 {
 				meeting.Attendees = append(meeting.Attendees,
@@ -176,6 +218,7 @@ func main() {
 			} else {
 				st, err := time.Parse("2006-01-02T15:04MST", mparts[0])
 				if err != nil {
+					panic(err)
 					meeting.StartTime = nil
 					meeting.Name = cmd[1]
 				} else {
